@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: atualizacoes.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: atualizacoes.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** 
+ * @file atualizacoes.gs
+ * @description Arquivo que contem funcoes de atualizacao e envio de emails automaticos. 
+ */
+
+/**
+ * Itera sobre a aba lotacao, tenta atualizar o link para a aba com o nome do prestador na planilha entidades
+ * atraves da funcao atualizarLinkPrestador. 
+ */
+function verificarReferenciaDosPrestadores() {
+  let colunaPrestadores = variaveis.abaLotacao.getRange(2, variaveis.COLUNA_PRESTADORES, variaveis.abaLotacao.getLastRow());
+  let colunaEntidades = variaveis.abaLotacao.getRange(2, variaveis.COLUNA_ENTIDADES_LOTACAO, variaveis.abaLotacao.getLastRow());
+  for (let i = 1; i &lt;= colunaPrestadores.getHeight(); i++) {
+    let entidade = colunaEntidades.getCell(i, 1).getValue();
+    let linkEntidade = procurarLinkEntidade(entidade);
+    let prestador = colunaPrestadores.getCell(i, 1);
+    if (linkEntidade != "" &amp;&amp; !prestador.getRichTextValue().getLinkUrl()) {
+      atualizarLinkDoPrestador(linkEntidade, prestador);
+    }
+  }
+}
+
+/**
+ * Verifica se existe uma aba com o mesmo nome contido na celula 'prestador recebida como parametro
+ * e atualiza a propria celula com um texto com link imbutido, o link leva diretamente
+ * para a aba do prestador na planilha entidade.
+ * @param {String} link - link da planilha de entidade 
+ * @param {GoogleAppsScript.Spreadsheet.Range} prestador - celula que possui o nome do prestador.
+ */
+function atualizarLinkDoPrestador(link, prestador){
+  try{
+    console.log("Atualizando link do prestador: " + prestador.getValue());
+    let planilhaEntidade = SpreadsheetApp.openByUrl(link);
+    let abaPrestador = planilhaEntidade.getSheetByName(prestador.getValue());
+    if(abaPrestador == null){
+      throw "Não foi encontrado relatório do prestador, necessário verificar manualmente.";
+    }
+    let idPlanilhaPrestador = abaPrestador.getSheetId();
+    let conteudoCelula = criarTextoComLink(prestador.getValue(), `${planilhaEntidade.getUrl()}#gid=${idPlanilhaPrestador}`);
+    prestador.setRichTextValue(conteudoCelula);
+  } catch(erro){
+    variaveis.planilha.toast(erro, prestador.getValue(), 10);
+  }
+}
+
+/**
+ * Utiliza a propriedade newRichTextValue para criar um texto clicavel na planilha.
+ * @param {String} texto 
+ * @param {String} link 
+ * @returns {GoogleAppsScript.Spreadsheet.RichTextValue} Texto com o link aplicado.
+ */
+function criarTextoComLink(texto, link){
+  let construtorTextoComLink = SpreadsheetApp.newRichTextValue();
+  construtorTextoComLink = construtorTextoComLink.setText(texto);
+  construtorTextoComLink = construtorTextoComLink.setLinkUrl(link);
+  let textoComLink = construtorTextoComLink.build();
+  return textoComLink;
+}
+
+/**
+ * Envia um email automatico a entidade com base no tipo registrado na celula destinada na planilha
+ */
+function enviaEmails() {
+
+  var lotacaoData = variaveis.abaLotacao.getDataRange().getValues();
+
+  var lotacaoHora = variaveis.abaLotacao.getDataRange().getDisplayValues();
+  
+  var mensagemStatus = '';
+
+  for (var i = 1; i &lt; lotacaoData.length; i++) { // Ignorar cabeçalho
+    var tipoEmail = lotacaoData[i][12]; // Coluna M
+    if (tipoEmail) {
+      var nomePrestador = lotacaoData[i][1]; // Coluna B
+      var entidadeNome = lotacaoData[i][7]; // Coluna H
+      var max_horas = lotacaoHora[i][4]; //lotacaoData[i][5];
+      var executado = lotacaoHora[i][5]; //lotacaoData[i][6];
+      var classe = lotacaoData[i][14];
+      var emailDestino = null;
+      var linkpdf = variaveis.abaLotacao.getRange(i + 1, 11).getRichTextValue().getLinkUrl();
+      var dowload = UrlFetchApp.fetch(linkpdf, {
+        method: 'get',
+        headers: {
+          'Authorization': 'Bearer ' + ScriptApp.getOAuthToken(),
+        },
+        muteHttpExceptions: true,
+      });
+      var pdf = dowload.getBlob();
+      pdf.setName('Relatório');
+      
+      for (let entidade of entidades) {
+        if (entidade.nome == entidadeNome) {
+          emailDestino = entidade.email;
+        }
+      }
+
+      if (emailDestino) {
+        var assunto = '';
+        var corpoEmail = '';
+        var corpoHTML = '';
+
+        if (tipoEmail === 'Encaminhamento') {
+          assunto = `PSC. Encaminhamento: ${nomePrestador}`;
+
+          if (classe === 'CP' || classe === "CP - EANPP") {
+            corpoEmail = `Boa tarde,\n\nPor ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários ${nomePrestador}. Observar o limite máximo de ${max_horas} horas por mês.\n\n`;
+            corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Por ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários &lt;b>${nomePrestador}&lt;/b>. Observar o limite máximo de &lt;b>${max_horas}&lt;/b> horas por mês.&lt;/p>`;
+          } else {
+            corpoEmail = `Boa tarde,\n\nPor ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários ${nomePrestador}.\n\n`;
+            corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Por ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários &lt;b>${nomePrestador}&lt;/b>.&lt;/p>`;
+          }
+
+          corpoEmail += `Caso a pessoa encaminhada não seja útil ou não se enquadre no perfil da entidade, por favor nos comunique o quanto antes, preferencialmente pelo e-mail prfoz04exec@jfpr.jus.br.\n\nCordialmente,\n4ª Vara Federal de Foz do Iguaçu/PR\n45-3521-3638`;
+          corpoHTML += `&lt;p>Caso a pessoa encaminhada não seja útil ou não se enquadre no perfil da entidade, por favor nos comunique o quanto antes pelo e-mail: &lt;a href="mailto:prfoz04exec@jfpr.jus.br">prfoz04exec@jfpr.jus.br&lt;/a>.&lt;/p>&lt;p>Cordialmente,&lt;/p>&lt;p>&lt;b>4ª Vara Federal de Foz do Iguaçu/PR&lt;/b>&lt;br>45-3521-3638&lt;/p>`;
+
+        } else if (tipoEmail === 'Informação') {
+          assunto = `PSC. Atualizar planilha: ${nomePrestador}`;
+          corpoEmail = `Boa tarde,\n\nCaso a pessoa nominada no assunto tenha comparecido, por favor atualizar a planilha.\n\nCordialmente,\n4ª Vara Federal de Foz do Iguaçu/PR\n45-3521-3638`;
+          corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Caso a pessoa nominada no assunto tenha comparecido, por favor atualizar a planilha.&lt;/p>&lt;p>Cordialmente,&lt;/p>&lt;p>&lt;b>4ª Vara Federal de Foz do Iguaçu/PR&lt;/b>&lt;br>45-3521-3638&lt;/p>`;
+
+        } else if (tipoEmail === 'Indulto') {
+          assunto = `PSC. Indultado(a): ${nomePrestador}`;
+          corpoEmail = `Boa tarde,\n\nComunico que a pessoa descrita no assunto deste e-mail foi dispensada do cumprimento da prestação de serviços comunitários, tendo em vista a concessão de indulto.\n\nCordialmente,\n4ª Vara Federal de Foz do Iguaçu/PR\n45-3521-3638`;
+          corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Comunico que a pessoa descrita no assunto deste e-mail foi dispensada do cumprimento da prestação de serviços comunitários, tendo em vista a concessão de indulto.&lt;/p>&lt;p>Cordialmente,&lt;/p>&lt;p>&lt;b>4ª Vara Federal de Foz do Iguaçu/PR&lt;/b>&lt;br>45-3521-3638&lt;/p>`;
+
+        } else if (tipoEmail === 'Encerramento') {
+          assunto = `PSC. Desligamento: ${nomePrestador}`;
+          corpoEmail = `Boa tarde,\n\nComunico que a pessoa descrita no assunto deste e-mail não irá mais prestar serviços comunitários nesta entidade.\nCaso a pessoa tenha cumprido mais do que ${executado} horas, por favor responder esse e-mail com as horas cumpridas.\n\nCordialmente,\n4ª Vara Federal de Foz do Iguaçu/PR\n45-3521-3638`;
+          corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Comunico que a pessoa descrita no assunto deste e-mail não irá mais prestar serviços comunitários nesta entidade.&lt;/p>&lt;p>Caso a pessoa tenha cumprido mais do que ${executado} horas, por favor responder esse e-mail com as horas cumpridas.&lt;/p>&lt;p>Cordialmente,&lt;/p>&lt;p>&lt;b>4ª Vara Federal de Foz do Iguaçu/PR&lt;/b>&lt;br>45-3521-3638&lt;/p>`;
+        }
+
+        if (assunto &amp;&amp; corpoEmail) {
+          try {
+            GmailApp.sendEmail(emailDestino, assunto, corpoEmail, { 
+              htmlBody: corpoHTML, 
+              attachments: tipoEmail === 'Encerramento' || tipoEmail === 'Indulto' ? [pdf] : null,
+            });
+          }
+          catch (e) {
+            SpreadsheetApp.getUi().alert('Email não enviado, problema de permissões do Google');
+            return;
+          }
+          mensagemStatus += `E-mail do prestador ${nomePrestador} enviado com sucesso.\n`;
+          // Apagar o preenchimento da coluna M
+          variaveis.abaLotacao.getRange(i + 1, 13).setValue('');
+        }
+      } else {
+        mensagemStatus += `E-mail não enviado para o prestador ${nomePrestador}: entidade não encontrada.\n`;
+      }
+    }
+  }
+
+  SpreadsheetApp.getUi().alert(mensagemStatus || 'Nenhum e-mail foi enviado.');
+}
+
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

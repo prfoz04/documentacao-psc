@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: abaCadastro.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: abaCadastro.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**  
+ * @file aba_cadastro.gs
+ * @description Gere a aba 'CadastroPrestador' e 'CadastroEntidade'.
+ */
+
+/**
+ * Insere na aba 'Lotacao' os dados inseridos no formulario da aba 'Cadastro', 
+ * disparada ao apertar o botao.
+ */
+function transferirDadosCadastro() {  
+  // 1. Coleta os dados da coluna B (B1 até B8)
+  const dadosBrutos = variaveis.abaCadastroPrestador.getRange("B1:B8").getValues();
+  
+  // --- LÓGICA DE FORMATAÇÃO PARA B1 (Número do Processo) ---
+  let valorB1 = dadosBrutos[0][0].toString().replace(/\D/g, ""); // Remove tudo que não for número
+  
+  // Se o número tiver os 20 dígitos padrão, aplica a máscara: 0000000-00.0000.0.00.0000
+  if (valorB1.length === 20) {
+    valorB1 = valorB1.replace(/(\d{7})(\d{2})(\d{4})(\d{1})(\d{2})(\d{4})/, "$1-$2.$3.$4.$5.$6");
+  } else {
+    valorB1 = dadosBrutos[0][0]; // Se não tiver 20 dígitos, mantém o que foi digitado
+  }
+  // ---------------------------------------------------------
+
+  const ultimaLinha = variaveis.abaLotacao.getLastRow();
+  const novaLinha = ultimaLinha + 1;
+  
+  // 2. Mapeamento atualizado com o valorB1 formatado
+  const mapeamento = [
+    [valorB1, 1],             // B1 Formatado -> Coluna A
+    [dadosBrutos[1][0], 2],   // B2 -> Coluna B
+    [dadosBrutos[5][0], 3],   // B6 -> Coluna C
+    [dadosBrutos[6][0], 4],   // B7 -> Coluna D
+    [dadosBrutos[7][0], 5],   // B8 -> Coluna E
+    [dadosBrutos[2][0], 9],   // B3 -> Coluna I
+    [dadosBrutos[4][0], 14],  // B5 -> Coluna N
+    [dadosBrutos[3][0], 15]   // B4 -> Coluna O
+  ];
+  
+  // Transferência dos valores
+  mapeamento.forEach(par => {
+    variaveis.abaLotacao.getRange(novaLinha, par[1]).setValue(par[0]);
+  });
+  
+  // 3. Copiar fórmulas das colunas F, G, J, K, L, P, Q, R
+  const linhaReferencia = (ultimaLinha > 1) ? ultimaLinha : 1; 
+  const colunasFormulas = [6, 7, 10, 11, 12, 16, 17, 18];
+  
+  colunasFormulas.forEach(col => {
+    const celulaOrigem = variaveis.abaLotacao.getRange(linhaReferencia, col);
+    const celulaDestino = variaveis.abaLotacao.getRange(novaLinha, col);
+    // @ts-ignore
+    celulaOrigem.copyTo(celulaDestino, SpreadsheetApp.CopyPasteType.PASTE_FORMULA);
+  });
+
+  // 4. Limpeza e Finalização
+  variaveis.abaCadastroPrestador.getRange("B1:B8").clearContent();
+  variaveis.abaCadastroPrestador.getRange("B1").activate();
+  
+  SpreadsheetApp.getUi().alert("Dados formatados e transferidos com sucesso!");
+}
+
+/**
+ * Classe para representar os dados de cadastro de uma entidade, coletados da aba 'Cadastro Entidade'.
+ */
+class CadastroEntidade {
+  constructor() {
+    let dados = variaveis.abaCadastroEntidade.getRange("B1:B10").getValues();
+    this.nomeEntidade = dados[0][0] || "";
+    this.email = normaliza(dados[1][0]) || [""];
+    this.telefone = normaliza(dados[2][0]) || [""];
+    this.cidade = dados[3][0] || "";
+    this.regiao = dados[4][0] || "";
+    this.endereco = normaliza(dados[5][0]) || [""];
+    this.maxPrestadores = dados[6][0] || "";
+    this.responsavel = dados[7][0] || "";
+    this.cpfResponsavel = dados[8][0] || "";
+    this.encarregados = normaliza(dados[9][0]) || [""];
+    this.link = ""; 
+  }
+}
+
+/**
+ * Função utilizada para tratar os dados separados por ;
+ * @param {String} string 
+ * @return {String[]} Retorna um array com os dados
+ */
+function normaliza(string) {
+  string = string.toString();
+  let ponto = string.indexOf(";");
+  let resultado = [];
+
+  while (ponto !== -1) {
+    resultado.push(string.substring(0, ponto).trim());
+    string = string.substring(ponto + 1);
+    ponto = string.indexOf(";");
+  }
+
+  if (ponto === -1) {
+    resultado.push(string.trim());
+  }
+
+  return resultado;
+}
+
+/**
+ * Função para copiar as fórmulas mantendo a estrutura.
+ * @param {number} linhaOrigem 
+ * @param {number} linhaDestino 
+ */
+function copiarformulas(linhaOrigem, linhaDestino) {
+  for (let col = 1; col &lt;= variaveis.abaQuadroVagas.getLastColumn(); col++) {
+    const celulaOrigem = variaveis.abaQuadroVagas.getRange(linhaOrigem, col);
+    if (celulaOrigem.getFormula() === "") continue; 
+    const celulaDestino = variaveis.abaQuadroVagas.getRange(linhaDestino, col);
+    // @ts-ignore
+    celulaOrigem.copyTo(celulaDestino, SpreadsheetApp.CopyPasteType.PASTE_FORMULA);
+  }
+}
+
+/**
+ * Função para cadastrar uma nova entidade, gera a planilha de entidade com as respectivas abas, scripts e acionadores
+ * já formatados, e insere os dados na aba de quadro de vagas.
+ */
+function cadastroEntidade() {
+  console.log("Iniciando cadastro de nova entidade...");
+  const entidade = new CadastroEntidade();
+  const copia = DriveApp.getFileById(variaveis.planilhaModeloEntidade.getId()).makeCopy(entidade.nomeEntidade);
+
+  entidade.link = `https://docs.google.com/spreadsheets/d/${copia.getId()}/edit?usp=drive_link`;
+  console.log(`Link da nova planilha: ${entidade.link}`);
+
+  let primeiraLinhaCidade;
+    let dadosQuadroVagas = variaveis.abaQuadroVagas.getRange("G:G").getValues();
+    for (let i = 2; i &lt; dadosQuadroVagas.length; i++) { // Começa a partir da linha 2 para pular o cabeçalho
+      if (dadosQuadroVagas[i][0] === entidade.cidade) {
+        primeiraLinhaCidade = i + 1;
+        break;
+      }
+    }
+    //linha acima da que será inserida a nova entidade na aba Quadro Vagas
+    let novaLinha = variaveis.abaQuadroVagas.getRange("G:G").getValues().filter(value => value[0] === entidade.cidade).length;
+    novaLinha = primeiraLinhaCidade + novaLinha; 
+    console.log(`Linha da nova entidade na aba Quadro Vagas: ${novaLinha}`);
+
+  try{
+    const planilhaEntidade = SpreadsheetApp.openById(copia.getId());
+    const modeloRelacaoPrestadores = variaveis.planilhaModeloEntidade.getSheetByName("Relação de prestadores");
+    const abaCadastro = planilhaEntidade.getSheetByName("Cadastros");
+    const abaRelacaoPrestadores = planilhaEntidade.getSheetByName("Relação de prestadores");
+  
+    //formula da aba relação prestadores
+    let formula = modeloRelacaoPrestadores.getRange("A1").getFormula();
+    //substitui para consultar na aba lotação
+    formula = formula.replace("entidade", entidade.nomeEntidade);
+    abaRelacaoPrestadores.getRange("A1").setFormula(formula);
+    console.log('Aba "Relação Prestadores" formatada com a fórmula atualizada.');
+
+    formatarAbaCadastro(entidade, abaCadastro);
+    console.log('Aba "Cadastros" formatada com os dados da entidade.');
+
+    //remove a aba vazia de prestador do modelo
+    planilhaEntidade.deleteSheet(planilhaEntidade.getSheetByName("NOME DO PRESTADOR"));
+
+    //cria a nova linha
+    variaveis.abaQuadroVagas.insertRowBefore(novaLinha);
+
+    copiarformulas(4, novaLinha);
+    console.log('Fórmulas copiadas para a nova linha na aba "Quadro Vagas".');
+
+    let linkAbaCadastros = `https://docs.google.com/spreadsheets/d/${copia.getId()}/edit?gid=${abaCadastro.getSheetId()}#gid=${abaCadastro.getSheetId()}`;
+    variaveis.abaQuadroVagas.getRange(novaLinha, 1).setValue(entidade.email.join("; ")); 
+    variaveis.abaQuadroVagas.getRange(novaLinha, 3).setRichTextValue(criarTextoComLink(entidade.nomeEntidade, linkAbaCadastros));
+    variaveis.abaQuadroVagas.getRange(novaLinha, 4).setRichTextValue(criarTextoComLink(entidade.link, entidade.link));
+    variaveis.abaQuadroVagas.getRange(novaLinha, 7).setValue(entidade.cidade);
+    variaveis.abaQuadroVagas.getRange(novaLinha, 8).setValue(entidade.regiao);
+    console.log('Dados da nova entidade inseridos na aba "Quadro Vagas".')
+
+    //inserindo as bordas de separação de cidade
+    let linhaSuperior = variaveis.abaQuadroVagas.getRange(novaLinha - 1, 1, 1, variaveis.abaQuadroVagas.getLastColumn());
+    let linhaAtual = variaveis.abaQuadroVagas.getRange(novaLinha, 1, 1, variaveis.abaQuadroVagas.getLastColumn());
+    linhaSuperior.setBorder(
+      false, false, false, false, false, false //tira as bordas
+    );
+    linhaAtual.setBorder(
+      false, false, true, true, false, false, "#000000", SpreadsheetApp.BorderStyle.SOLID
+    );
+
+    //define os editores da nova planilha
+    DriveApp.getFileById(copia.getId()).setSharing(DriveApp.Access.DOMAIN, DriveApp.Permission.VIEW);
+    planilhaEntidade.addEditor(Session.getActiveUser().getEmail());
+    planilhaEntidade.addEditor('brk00@jfpr.jus.br');
+    console.log(`Editor adicionado: ${Session.getActiveUser().getEmail()}`);
+    //planilhaEntidade.addEditor("brk00@jfpr.jus.br");
+    for (let email of entidade.email) {
+      if (email) {
+        planilhaEntidade.addEditor(email);
+        console.log(`Editor adicionado: ${email}`);
+      }
+    }
+    
+    //limpa os dados da aba de cadastro entidade
+    variaveis.abaCadastroEntidade.getRange("B1:B10").clearContent();
+    variaveis.abaQuadroVagas.getRange(novaLinha, 3).activate();
+
+    variaveis.planilha.toast("Cadastro de nova entidade realizado com sucesso!", "Sucesso");
+  }
+  catch (error) {
+    console.error("Erro ao cadastrar nova entidade:", error);
+    variaveis.planilha.toast("Ocorreu um erro ao cadastrar a nova entidade. Planilha excluída.", "error");
+    DriveApp.getFileById(copia.getId()).setTrashed(true); // Exclui a planilha criada em caso de erro
+    variaveis.abaQuadroVagas.deleteRow(novaLinha);
+    //limpa os dados da aba de cadastro entidade
+    variaveis.abaCadastroEntidade.getRange("B1:B10").clearContent();
+    variaveis.abaCadastroEntidade.getRange("A1").activate();
+  }
+}
+
+/**
+ * Função para formatar os dados coletados e inseri-los na aba 'Cadastros' de forma estruturada,
+ * @param {CadastroEntidade} entidade - Objeto contendo os dados da entidade a ser cadastrada.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} abaCadastro - Aba da planilha onde os dados serão inseridos.
+ */
+function formatarAbaCadastro(entidade, abaCadastro) {
+  abaCadastro.getRange("A1").setValue(entidade.nomeEntidade);
+  abaCadastro.getRange("B2").setValue(entidade.maxPrestadores);
+  abaCadastro.getRange("C12").setValue(entidade.responsavel);
+  abaCadastro.getRange("C13").setValue(entidade.cpfResponsavel);
+
+  let contatos = entidade.email.concat(entidade.telefone);
+
+  //preenche emails e telefones
+  preencheColuna(abaCadastro, contatos, abaCadastro.getRange("A16"));
+  //preenche encarregados
+  preencheColuna(abaCadastro, entidade.encarregados, abaCadastro.getRange("C16"));
+  //preenche endereço
+  preencheColuna(abaCadastro, entidade.endereco, abaCadastro.getRange("A23"));
+}
+
+/**
+ * preemche uma coluna a partir de uma célula inicial, utilizando os valores fornecidos.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} aba 
+ * @param {String[]} valores 
+ * @param {GoogleAppsScript.Spreadsheet.Range} celulaInicial 
+ */
+function preencheColuna(aba, valores, celulaInicial) {
+  let linha = celulaInicial.getRow();
+  let coluna = celulaInicial.getColumn();
+
+  for (let i of valores) {
+    aba.getRange(linha, coluna).setValue(i);
+    linha++;
+  }
+}</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

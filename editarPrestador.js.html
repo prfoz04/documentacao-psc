@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: editarPrestador.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: editarPrestador.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** 
+ * @file editar_prestador.gs
+ * @description Responsavel pelas funcoes com a logica de edicao e exclusao de prestadores.
+ */
+
+/**
+ * Altera a entidade do prestador, consequentemente retira a aba do prestador na entidade antiga 
+ * e passa para a nova entidade, tambem usada quando a pena eh concluida.
+ * @param {GoogleAppsScript.Spreadsheet.Range} celulaEntidade 
+ * @param {*} entidadeAnterior 
+ */
+function editarEntidadePrestador(celulaEntidade, entidadeAnterior){
+  if (celulaEntidade.getValue() === "x PSC encerrada") { // Use o nome exato da sua entidade
+    tratarPenaConcluida(celulaEntidade, entidadeAnterior);
+    return; // Interrompe a execução da função original para este caso
+  }
+  if (!variaveis.abaLotacao) {
+    console.log("Erro: abaLotacao está indefinida.");
+    return;
+  }
+  let prestador = variaveis.abaLotacao.getRange(celulaEntidade.getRow(), variaveis.COLUNA_PRESTADORES);
+  if(entidadeAnterior != null &amp;&amp; prestador.getValue() != ""){  //TINHA ENTIDADE E TEM PRESTADOR
+    let linkNovo = procurarLinkEntidade(celulaEntidade.getValue());
+    let linkAntigo = procurarLinkEntidade(entidadeAnterior);
+    if(linkAntigo != ""){ //ENTIDADE TINHA LINK
+      try{
+        let planilhaAntiga = SpreadsheetApp.openByUrl(linkAntigo);
+        if (!planilhaAntiga) {
+            throw "Erro: Não foi possível abrir a planilha antiga.";
+        }
+        let abaAntigaPrestador = planilhaAntiga.getSheetByName(prestador.getValue());
+        if(abaAntigaPrestador == null){
+          throw "Relatório original do prestador não encontrado. Verificar exclusão manualmente.";
+        }
+        if(linkNovo == ""){ //NOVA ENTIDADE NÃO TEM LINK
+          if(relatorioVazio(abaAntigaPrestador)){
+            planilhaAntiga.deleteSheet(abaAntigaPrestador);
+            removerLinkDoPrestador(prestador);
+          } else{
+            let confirmacao = confirmarExclusao();
+            if(confirmacao){
+              planilhaAntiga.deleteSheet(abaAntigaPrestador);
+              removerLinkDoPrestador(prestador);
+            } else{
+              celulaEntidade.setValue(entidadeAnterior);
+            }
+          }
+        } else{ //NOVA ENTIDADE TEM LINK
+          try{
+            let abaNovaPrestador = adicionarPrestadorSePossivel(linkNovo, prestador);
+            copiarDadosPrestador(abaAntigaPrestador,abaNovaPrestador);
+            planilhaAntiga.deleteSheet(abaAntigaPrestador);
+          } catch(erro){
+            celulaEntidade.setValue(entidadeAnterior);
+            erro += " Verificar entidades manualmente.";
+            console.log(erro);
+            Browser.msgBox(erro, Browser.Buttons.OK);
+          }
+        }
+      } catch(erro){
+        if(linkNovo == ""){
+          removerLinkDoPrestador(prestador);
+        } else{
+          adicionarPrestadorSePossivel(linkNovo, prestador);
+        }
+        console.log(erro);
+        Browser.msgBox(erro, Browser.Buttons.OK);
+      }
+    } else if(linkNovo != ""){ //ENTIDADE NÃO TINHA LINK E NOVA ENTIDADE TEM
+      try{
+        adicionarPrestadorSePossivel(linkNovo, prestador);
+      } catch(erro){
+        console.log(erro);
+        Browser.msgBox(erro, Browser.Buttons.OK);
+      }
+    }
+  }
+}
+
+/**
+ * Verifica se o relatorio esta vazio.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} abaPrestador 
+ * @returns {boolean}
+ */
+function relatorioVazio(abaPrestador){
+  let relatrioPrestador = abaPrestador.getRange(3, 2, abaPrestador.getLastRow(), 4);
+  return relatrioPrestador.isBlank();
+}
+
+/**
+ * remove o link da celula recebida.
+ * @param {GoogleAppsScript.Spreadsheet.Range} prestador 
+ */
+function removerLinkDoPrestador(prestador){
+  let estilo = SpreadsheetApp.newTextStyle().setUnderline(false).build();
+  let conteudoCelula = SpreadsheetApp.newRichTextValue().setText(prestador.getValue()).setTextStyle(estilo).build();
+  prestador.setRichTextValue(conteudoCelula);
+  prestador.setFontColor("black");
+}
+
+/**
+ * Pergunta se o usuario quer mesmo excluir a aba do prestador.
+ * @return {boolean}
+ */
+function confirmarExclusao(){
+  var ui = SpreadsheetApp.getUi();
+  let confirmacao = ui.alert("Deseja prosseguir ?", "Esta ação irá excluir todos os dados da planilha do prestador.", ui.ButtonSet.YES_NO);
+  if(confirmacao == ui.Button.YES){
+    return true;
+  } else{
+    return false;
+  }
+}
+
+/**
+ * Copia os dados do relatorio e da somatoria de uma aba para outra, tambem gera um novo PDF.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} abaOrigem 
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} abaDestino 
+ */
+function copiarDadosPrestador(abaOrigem, abaDestino){
+  if(!relatorioVazio(abaOrigem)){
+    let relatorioAntigo = abaOrigem.getRange(3, 2, abaOrigem.getLastRow(), abaOrigem.getLastColumn() - 2).getValues();
+    let relatorioNovo = abaDestino.getRange(3, 2, abaOrigem.getLastRow(), abaOrigem.getLastColumn() - 2);
+    if(temEproc(abaOrigem)){
+      abaDestino.getRange(3, abaDestino.getLastColumn()).setValue(abaOrigem.getRange(3, abaOrigem.getLastColumn()).getValue());
+    }
+    relatorioNovo.setValues(relatorioAntigo);
+    let colunaSomaAntiga = abaOrigem.getRange(8, 1, abaOrigem.getLastRow());
+    let colunaSomaNova = abaDestino.getRange(8, 1, abaOrigem.getLastRow());
+    ajustarColunaSomatoria(colunaSomaAntiga, colunaSomaNova);
+    estilizarColunaTotal(colunaSomaNova);
+    PDF.gerarLinkDownload(abaDestino);
+  }
+}
+
+/**
+ * Verifica se a tabela tem horas registradas.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} aba 
+ * @returns {boolean}
+ */
+function temEproc(aba){
+  if(aba.getRange(3, aba.getLastColumn()).getFormula() == ""){
+    return true;
+  } else{
+    return false;
+  }
+}
+
+/**
+ * Insere as formulas e os valores da coluna antiga na nova.
+ * @param {GoogleAppsScript.Spreadsheet.Range} colunaAntiga 
+ * @param {GoogleAppsScript.Spreadsheet.Range} colunaNova 
+ */
+function ajustarColunaSomatoria(colunaAntiga, colunaNova){
+  let celulasAnos = [];
+  for(let i = 1; i &lt;= colunaAntiga.getHeight(); i++){
+    let celula = colunaAntiga.getCell(i, 1);
+    if(celula.getValue() == ""){
+      break;
+    }
+    if(Number.isInteger(celula.getValue())){
+      celulasAnos.push(celula);
+    }
+  }
+  colunaNova.setFormulas(colunaAntiga.getFormulas());
+  for(let i = 0; i &lt; celulasAnos.length; i++){
+    colunaNova.getCell(celulasAnos[i].getRow() - 7, 1).setValue(celulasAnos[i].getValue());
+  }
+}
+
+/**
+ * Realiza operacoes para normalizar os dados apos uma pena ser concluida,
+ * retira a aba do prestador da tabela de entidade e retira a linha do prestador
+ * da tabela lotacao, copia a aba do prestador para a tabela 'x PSC encerrada',
+ * a logica de rollback desfaz perfeitamente as alteracoes caso aconteca algum erro. 
+ * @param {GoogleAppsScript.Spreadsheet.Range} celulaEntidade 
+ * @param {*} entidadeAnterior 
+ */
+function tratarPenaConcluida(celulaEntidade, entidadeAnterior) {
+  const NOME_ENTIDADE_CONCLUIDA = "x PSC encerrada"; // Use o nome exato da sua entidade
+  const NOME_ABA_RELACAO = "Relação de prestadores";
+  let abaRelacaoPrestadores = null;
+  let linhaAdicionadaParaRollback = false;
+  let nomePrestadorParaRollback = '';
+
+  try {
+    Logger.log(`Iniciando processo para "${NOME_ENTIDADE_CONCLUIDA}".`);
+
+    let linhaPrestador = celulaEntidade.getRow();
+    let prestadorRange = variaveis.abaLotacao.getRange(linhaPrestador, variaveis.COLUNA_PRESTADORES);
+    let nomePrestador = prestadorRange.getValue();
+    nomePrestadorParaRollback = nomePrestador; // Guarda para o catch
+
+    if (nomePrestador === "") {
+      throw new Error("O nome do prestador não pode estar vazio para concluir a pena.");
+    }
+
+    // 1. Copiar a linha de dados, incluindo fórmulas, da aba 'Lotação' para a planilha de destino
+    let rangeToCopy = variaveis.abaLotacao.getRange(linhaPrestador, 1, 1, variaveis.abaLotacao.getLastColumn());
+    let values = rangeToCopy.getValues()[0];
+    let formulas = rangeToCopy.getFormulas()[0];
+    let originalData = [];
+
+    // Prepara o array de dados, priorizando fórmulas
+    for (let i = 0; i &lt; formulas.length; i++) {
+      if (formulas[i]) {
+        originalData.push(formulas[i]);
+      } else {
+        originalData.push(values[i]);
+      }
+    }
+    Logger.log("Dados da linha do prestador (incluindo fórmulas) capturados.");
+
+    let linkNovo = procurarLinkEntidade(NOME_ENTIDADE_CONCLUIDA);
+    if (linkNovo === "") {
+      throw new Error(`O link para a entidade "${NOME_ENTIDADE_CONCLUIDA}" não foi encontrado.`);
+    }
+
+    let planilhaConcluida = SpreadsheetApp.openByUrl(linkNovo);
+    abaRelacaoPrestadores = planilhaConcluida.getSheetByName(NOME_ABA_RELACAO);
+    if (!abaRelacaoPrestadores) {
+      throw new Error(`A aba "${NOME_ABA_RELACAO}" não foi encontrada na planilha de destino.`);
+    }
+
+    // --- LÓGICA PARA AJUSTAR FÓRMULAS E SUBSTITUIR A DA COLUNA F ---
+    const oldRow = linhaPrestador;
+    const newRow = abaRelacaoPrestadores.getLastRow() + 1; // A próxima linha a ser inserida
+    const formulaRegex = new RegExp('([A-Z]{1,3})' + oldRow + '(?![0-9])', 'g');
+    const dataToAppend = originalData.map(cellData => {
+      if (typeof cellData === 'string' &amp;&amp; cellData.startsWith('=')) {
+        return cellData.replace(formulaRegex, '$1' + newRow);
+      }
+      return cellData;
+    });
+    Logger.log(`Fórmulas ajustadas da linha ${oldRow} para a linha ${newRow}.`);
+
+    // --- ALTERAÇÃO REALIZADA ---
+    // A coluna F é a 6ª coluna, que corresponde ao índice 5 no array (0-indexed).
+    // Substitui a fórmula nesta coluna para apontar para a célula A6 da aba do prestador.
+    const novaFormulaColunaF = `='${nomePrestador}'!A6`;
+    dataToAppend[5] = novaFormulaColunaF; // Coluna F
+    Logger.log(`Fórmula da coluna F substituída por: ${novaFormulaColunaF}`);
+    // --- FIM DA ALTERAÇÃO ---
+
+    abaRelacaoPrestadores.appendRow(dataToAppend);
+    linhaAdicionadaParaRollback = true;
+    Logger.log(`Linha do prestador adicionada na aba "${NOME_ABA_RELACAO}" (linha ${newRow}).`);
+
+    // --- NOVA LÓGICA PARA FORMATAR CÉLULAS ---
+    // Aplica o formato de duração às colunas C, D, E, F e G da nova linha
+    const newRowIndex = abaRelacaoPrestadores.getLastRow(); // Pega o índice da linha que acabamos de adicionar
+    abaRelacaoPrestadores.getRange(newRowIndex, 3, 1, 5).setNumberFormat("[hh]:mm"); // Colunas C até G (5 colunas)
+    Logger.log("Formato de duração aplicado às colunas de tempo.");
+    
+    SpreadsheetApp.flush();
+    Logger.log("Operações da planilha sincronizadas para garantir a atualização dos dados.");
+
+    // 2. Mover a aba de relatório do prestador da planilha antiga para a nova
+    let linkAntigo = procurarLinkEntidade(entidadeAnterior);
+    if (linkAntigo &amp;&amp; linkAntigo !== "") {
+      let planilhaAntiga = SpreadsheetApp.openByUrl(linkAntigo);
+      let abaAntigaPrestador = planilhaAntiga.getSheetByName(nomePrestador);
+
+      if (abaAntigaPrestador) {
+        Logger.log(`Aba de relatório encontrada em "${entidadeAnterior}". Movendo...`);
+        abaAntigaPrestador.copyTo(planilhaConcluida).setName(nomePrestador);
+        planilhaAntiga.deleteSheet(abaAntigaPrestador);
+        Logger.log("Aba do relatório movida com sucesso.");
+      } else {
+        Logger.log(`Aviso: Nenhuma aba de relatório encontrada para "${nomePrestador}" na planilha antiga.`);
+      }
+    } else {
+      Logger.log(`Aviso: Entidade anterior "${entidadeAnterior}" não possuía link. Não há aba para mover.`);
+    }
+
+    // 3. Se tudo deu certo, apagar a linha original da aba "Lotação"
+    variaveis.abaLotacao.deleteRow(linhaPrestador);
+    Logger.log("Processo concluído. Linha do prestador apagada da aba 'Lotação'.");
+    Browser.msgBox(`Prestador "${nomePrestador}" movido para "${NOME_ENTIDADE_CONCLUIDA}" com sucesso!`);
+
+  } catch (erro) {
+    Logger.log(`ERRO no processo de "Pena Concluída": ${erro.stack}`);
+    Browser.msgBox(`Ocorreu um erro: ${erro.message}. As alterações foram revertidas.`);
+
+    // --- Início do Processo de ROLLBACK ---
+    celulaEntidade.setValue(entidadeAnterior);
+    Logger.log(`Rollback: Entidade revertida para "${entidadeAnterior}".`);
+
+    // Se a linha foi adicionada na planilha de concluídos, remove-a.
+    // Esta busca garante que a linha correta seja apagada mesmo em um ambiente com múltiplos usuários.
+    if (linhaAdicionadaParaRollback &amp;&amp; abaRelacaoPrestadores) {
+      try {
+        let dadosRelacao = abaRelacaoPrestadores.getDataRange().getValues();
+        let linhaParaApagar = -1;
+
+        for (let i = dadosRelacao.length - 1; i >= 0; i--) {
+          // Assumindo que o nome do prestador está na coluna definida por COLUNA_PRESTADORES
+          if (dadosRelacao[i][variaveis.COLUNA_PRESTADORES - 1] === nomePrestadorParaRollback) {
+            linhaParaApagar = i + 1; // getValues é 0-indexed, linhas são 1-indexed
+            break;
+          }
+        }
+
+        if (linhaParaApagar !== -1) {
+          abaRelacaoPrestadores.deleteRow(linhaParaApagar);
+          Logger.log(`Rollback: Linha do prestador (encontrada na linha ${linhaParaApagar}) apagada da aba "${NOME_ABA_RELACAO}".`);
+        } else {
+          Logger.log(`AVISO de Rollback: Não foi possível encontrar a linha do prestador "${nomePrestadorParaRollback}" para apagar.`);
+        }
+      } catch (e) {
+         Logger.log(`ERRO durante o rollback da linha: ${e.stack}`);
+         Browser.msgBox("Atenção: A entidade foi revertida, mas a linha de dados pode precisar ser removida manualmente da planilha de concluídos.");
+      }
+    }
+  }
+}</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

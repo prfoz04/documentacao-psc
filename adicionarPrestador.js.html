@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: adicionarPrestador.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: adicionarPrestador.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** 
+ * @file adicionar_prestador.gs
+ * @description Funcoes responsaveis por criar e formatar as abas individuais de prestadores.
+ */ 
+
+/**
+ * Busca o prestador na aba de lotacao e chama a função que tenta o adicionar na tabela.
+ * @param {GoogleAppsScript.Spreadsheet.Range} celulaEntidade 
+ */
+function adicionarNovoPrestador(celulaEntidade) {
+  let link = procurarLinkEntidade(celulaEntidade.getValue());
+  let prestador = variaveis.abaLotacao.getRange(celulaEntidade.getRow(), variaveis.COLUNA_PRESTADORES);
+  try {
+    adicionarPrestadorSePossivel(link, prestador);
+  } catch (erro) {
+    celulaEntidade.clearContent();
+    erro += " Insira outro nome.";
+    console.log(erro);
+    Browser.msgBox(erro, Browser.Buttons.OK);
+  }
+}
+
+/**
+ * busca no vetor 'entidades' uma entidade através da propriedade nome.
+ * @param {*} nomeEntidade - nome.
+ * @returns link da planilha de entidades ou string vazia.
+ */
+function procurarLinkEntidade(nomeEntidade){
+  for(let entidade of entidades){
+    if(entidade.nome == nomeEntidade){
+      return entidade.link;
+    }
+  }
+  return "";
+}
+
+/**
+ * Realiza varias verificacoes e tenta adicionar um novo prestador, caso o prestador já esteja cadastrado,
+ * dispara um email automatico avisando a entidade, caso nao exista, constroi uma nova aba na planilha de entidades.
+ * @param {string} link 
+ * @param {GoogleAppsScript.Spreadsheet.Range} prestador 
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} Aba criada com o nome do prestador.
+ */
+function adicionarPrestadorSePossivel(link, prestador) {
+  Logger.log("Iniciando processo de adição de prestador.");
+
+  // 1. Validação inicial dos dados de entrada
+  if (link == "") {
+    Logger.log("Link da entidade é inválido ou não foi encontrado. A função será interrompida.");
+
+    return;
+  }
+
+  const nomePrestador = prestador.getValue();
+  if (nomePrestador == "") {
+    Logger.log("Nome do prestador não foi informado.");
+    throw "Insira o nome do prestador antes da entidade.";
+  }
+
+  Logger.log(`Link válido encontrado: ${link}`);
+  Logger.log(`Verificando prestador: ${nomePrestador}`);
+
+  const planilhaEntidade = SpreadsheetApp.openByUrl(link);
+
+  // --- LÓGICA PRINCIPAL ADICIONADA ---
+  // 2. Verifica se uma aba com o nome do prestador já existe na planilha de destino
+  if (planilhaEntidade.getSheetByName(nomePrestador)) {
+
+    const nomeDaEntidade = variaveis.abaLotacao.getRange(prestador.getRow(), 8).getValue();
+    const assunto = `Alerta: Tentativa de Adicionar Prestador Duplicado - ${nomePrestador}`;
+    const corpoEmail = `
+            Este é um aviso automático do sistema de planilhas.
+            
+            Foi detectada uma tentativa de adicionar o prestador "${nomePrestador}", que já se encontra cadastrado na planilha da entidade "${nomeDaEntidade}".
+            
+            Nenhuma ação foi tomada e nenhum dado foi alterado. Este e-mail serve apenas como registro do evento.
+        `;
+    const corpoHTML = corpoEmail.replace(/\n/g, '&lt;br>');
+    Logger.log(`Prestador duplicado: "${nomePrestador}" na entidade "${nomeDaEntidade}". Enviando e-mail de notificação.`);
+
+    // Envia o e-mail de notificação.
+    GmailApp.sendEmail('brk00@jfpr.jus.br', assunto, corpoEmail, { htmlBody: corpoHTML });
+
+    // Interrompe a função para evitar a criação duplicada e o erro subsequente.
+    return planilhaEntidade.getSheetByName(nomePrestador);
+  }
+  // --- FIM DA LÓGICA ADICIONADA ---
+
+  Logger.log(`O prestador "${nomePrestador}" não existe na entidade. Prosseguindo com a criação.`);
+
+  let abaNovoPrestador;
+  try {
+    // 3. Cria a nova aba (passando o objeto da planilha para mais eficiência)
+    abaNovoPrestador = criarNovaAba(link);
+    Logger.log("Aba de modelo copiada para a planilha da entidade.");
+
+    // 4. Formata e configura a nova aba
+    const linhaPrestador = prestador.getRow();
+
+    const nomeDaEntidade = variaveis.abaLotacao.getRange(linhaPrestador, 8).getValue();
+
+    // A função formatarAba deve renomear a aba para o nome do prestador.
+    formatarAba(abaNovoPrestador, nomePrestador, nomeDaEntidade);
+    Logger.log("Aba formatada com sucesso.");
+
+    atualizarLinkDoPrestador(link, prestador);
+    Logger.log("Link do prestador atualizado na aba de lotação.");
+
+    // @ts-ignore
+    PDF.gerarLinkDownload(abaNovoPrestador);
+    Logger.log("Link de download do PDF gerado.");
+
+    return abaNovoPrestador;
+  } catch (erro) {
+    Logger.log(`Ocorreu um erro durante a criação e formatação da aba: ${erro.stack || erro}`);
+
+    // 5. Limpeza em caso de erro: se a aba foi criada, ela é excluída.
+    if (abaNovoPrestador) {
+      planilhaEntidade.deleteSheet(abaNovoPrestador);
+      Logger.log("Aba temporária do prestador foi excluída devido ao erro.");
+    }
+
+    throw erro; // Relança o erro para que a função `adicionarNovoPrestador` possa tratá-lo.
+  }
+}
+
+/**
+ * Cria uma aba vazia baseada no link de uma planilha genérica já existente.
+ * @param {string} link - link da planilha entidade.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} - Nova aba criada.
+ */
+function criarNovaAba(link) {
+  try {
+    link = String(link).trim();// remove espaços em branco
+    if (!/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9-_]+/.test(link)) 
+      throw new Error(`Link inválido passado para criarNovaAba: ${link}`);
+    let planilhaEntidade = SpreadsheetApp.openByUrl(link);
+    let nomePlanilha = planilhaEntidade.getName();
+    let modeloRelatorio = variaveis.planilhaModeloEntidade.getSheetByName("NOME DO PRESTADOR");
+    let abaNovoPrestador = modeloRelatorio.copyTo(planilhaEntidade);
+    if (!nomePlanilha.includes("Conselho Pato Branco") &amp;&amp; !nomePlanilha.includes("Conselho Cascavel")) {
+      let protecoes = modeloRelatorio.getProtections(SpreadsheetApp.ProtectionType.SHEET)[0];
+      inserirProtecoes(abaNovoPrestador, protecoes); 
+  }
+     return abaNovoPrestador;
+  }
+  catch (erro) {
+    console.log("erro ao criar aba: " + erro);
+    return null
+  }
+
+}
+
+/**
+ * Coloca proteção na aba, define as celulas que podem ser editadas e por fim, 
+ * define quem criou a aba como o único editor possível.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} abaPrestador 
+ * @param {GoogleAppsScript.Spreadsheet.Protection} protecoes 
+ */
+function inserirProtecoes(abaPrestador, protecoes) {
+  if (!protecoes) {
+    console.error("Erro: protecoes está indefinido!");
+    return;
+  }
+  let protecaoPagina = abaPrestador.protect();
+  //pega as células desprotegidas do modelo e passa para a nova aba
+  let celulasDesprotegidas = protecoes.getUnprotectedRanges().map(celula => abaPrestador.getRange(celula.getA1Notation()));
+  protecaoPagina.setUnprotectedRanges(celulasDesprotegidas);
+  let editoresAtuais = protecaoPagina.getEditors();
+  editoresAtuais.forEach(editor => protecaoPagina.removeEditor(editor)); // Remove todos os editores
+  protecaoPagina.addEditor(Session.getEffectiveUser());
+}
+
+/**
+ * Define o nome da aba como nome do prestador, na tabela, coloca o nome 
+ * da entidade, do prestador, o ano e formata a coluna de relatório. 
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} abaPrestador 
+ * @param {string} nomePrestador 
+ * @param {string} nomeDaEntidade 
+ */
+function formatarAba(abaPrestador, nomePrestador, nomeDaEntidade) {
+  abaPrestador.setName(nomePrestador);
+  Logger.log("Nome da aba definido para: " + nomePrestador);
+
+  let campoEntidade = abaPrestador.getRange(1, 1); // Linha 1, Coluna 1
+  campoEntidade.setValue(nomeDaEntidade);
+  Logger.log("Nome da entidade definido: " + nomeDaEntidade);
+  let campoNome = abaPrestador.getRange(2, 1);
+  campoNome.clearDataValidations();
+  campoNome.setValue(nomePrestador);
+  Logger.log("Nome do prestador inserido na aba");
+
+  let colunaSomatoria = abaPrestador.getRange(8, 1, abaPrestador.getLastRow());
+  colunaSomatoria.clearContent();
+  Logger.log("Conteúdo da coluna de somatória limpo");
+  let ano = colunaSomatoria.getCell(1, 1);
+  ano.setValue(new Date().getFullYear());
+  let relatorio = abaPrestador.getRange(3, 2, abaPrestador.getMaxRows(), abaPrestador.getLastColumn() - 1);
+  relatorio = relatorio.clearContent();
+  Logger.log("relatorio ");
+  aplicarFormulas(colunaSomatoria, relatorio);
+  Logger.log("Fórmulas aplicadas na coluna de somatória");
+  estilizarColunaTotal(colunaSomatoria);
+  Logger.log("Estilo aplicado na coluna de somatória");
+}
+
+/**
+ * Constroi as formulas dos meses e do total do periodo e as insere nas colunas passadas por parametro.
+ * @param {GoogleAppsScript.Spreadsheet.Range} colunaSomatoria 
+ * @param {GoogleAppsScript.Spreadsheet.Range} relatorio 
+ */
+function aplicarFormulas(colunaSomatoria, relatorio) {
+  let dataAtual = new Date();
+  let anoAtual = dataAtual.getFullYear();
+  let mesAtual = dataAtual.getMonth(); // Janeiro = 0
+  let mesInfo = nomesMeses[mesAtual];
+
+  let linhaAtual = 1;
+
+  // Insere o ano atual na célula
+  let celulaAno = colunaSomatoria.getCell(linhaAtual, 1);
+  celulaAno.setValue(String(anoAtual)).setFontWeight("bold").setHorizontalAlignment("left");
+  let linhaDaAno = celulaAno.getRow(); // Obtém a linha absoluta da aba
+  linhaAtual++;
+
+  // Insere o mês atual na célula com a fórmula correta
+  let celulaMes = colunaSomatoria.getCell(linhaAtual, 1);
+  let formula = `=IF(TEXT(ARRAYFORMULA(SUMIFS($F$3:$F; MONTH($B$3:$B); ${mesInfo.numero}; YEAR($B$3:$B); $A$${linhaDaAno})); "[hh]:mm")="00:00"; "${mesInfo.nome}: não compareceu"; CONCAT("${mesInfo.nome}: "; TEXT(ARRAYFORMULA(SUMIFS($F$3:$F; MONTH($B$3:$B); ${mesInfo.numero}; YEAR($B$3:$B); $A$${linhaDaAno})); "[hh]:mm")))`;
+
+  Logger.log(`Formula: ${formula}`);
+
+  celulaMes.setFormula(formula);
+  linhaAtual++;
+  //insere formula na coluna F - obtém a linha inicial do relatorio para referências corretas
+  let linhaInicialRelatorio = relatorio.getRow();
+  for (let i = 1; i &lt;= relatorio.getHeight(); i++) {
+    let linhaAbsoluta = linhaInicialRelatorio + i - 1;
+    relatorio.getCell(i, 5).setFormula(`=IFS(D${linhaAbsoluta}="";"";D${linhaAbsoluta}>0;D${linhaAbsoluta}-C${linhaAbsoluta})`);
+  }
+}
+
+const nomesMeses = [
+    { nome: "Janeiro", numero: 1 },
+    { nome: "Fevereiro", numero: 2 },
+    { nome: "Março", numero: 3 },
+    { nome: "Abril", numero: 4 },
+    { nome: "Maio", numero: 5 },
+    { nome: "Junho", numero: 6 },
+    { nome: "Julho", numero: 7 },
+    { nome: "Agosto", numero: 8 },
+    { nome: "Setembro", numero: 9 },
+    { nome: "Outubro", numero: 10 },
+    { nome: "Novembro", numero: 11 },
+    { nome: "Dezembro", numero: 12 }
+  ];
+
+/**
+ * Estiliza a coluna recebida como parametro, usado para a coluna do somatorio de meses.
+ * @param {GoogleAppsScript.Spreadsheet.Range} coluna 
+ */
+function estilizarColunaTotal(coluna) {
+  let estiloAno = SpreadsheetApp.newTextStyle();
+  // @ts-ignore
+  estiloAno = estiloAno.setBold(true).build();
+  let estiloGeral = SpreadsheetApp.newTextStyle();
+  // @ts-ignore
+  estiloGeral = estiloGeral.setBold(false).build();
+  let valores = coluna.getValues();
+  let i = 0;
+  while (valores[i][0] != "") {
+    let celula = coluna.getCell(i + 1, 1);
+    if (Number.isInteger(valores[i][0])) {
+      celula.setHorizontalAlignment("center");
+      // @ts-ignore
+      celula.setTextStyle(estiloAno);
+    } else {
+      celula.setHorizontalAlignment("left");
+      // @ts-ignore
+      celula.setTextStyle(estiloGeral);
+    }
+    i++;
+  }
+}</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

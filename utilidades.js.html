@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: utilidades.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: utilidades.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** 
+ * @file utilidades.gs
+ * @description Possui funcoes que gerenciam as abas.
+ */ 
+
+/**  
+ * Ao editar um dado, a funcao eh disparada e verifica se deve alterar nas outras abas o dado correspondente 
+ * ou adicionar um novo prestador, importante para a consistencia dos dados entre as abas.
+ * Disparado por um acionador de edicao.
+ * @param {*} evento 
+ */
+function acionadorEdicao(evento) {
+  let celula = evento.range;
+  let valorAnterior = evento.oldValue;
+
+  if (variaveis.planilha.getActiveSheet().getName() == variaveis.abaLotacao.getName()) {
+    console.log("Aba ativa Lotação");
+    if (celula.getColumn() == variaveis.COLUNA_ENTIDADES_LOTACAO) {
+      if (valorAnterior == null) {   //NÃO TINHA ENTIDADE
+        console.log("Adicionar novo prestador");
+        verificarNovosPrestadores();
+      }
+       else {   //TINHA ENTIDADE
+        console.log("Editar entidade prestador");
+        editarEntidadePrestador(celula, valorAnterior);
+
+      }
+    }
+  }
+}
+
+/**
+ * Itera sobre a aba 'Quadro Vagas' registrando os dados de cada entidade.
+ * Função chamada na declaração da variável entidades.
+ * @return {entidades[]} - array de objetos que representam entidades.
+ */
+function pegarEntidades() {
+  let entidadesDados = [];
+  let abaEntidadesDados = variaveis.abaQuadroVagas.getRange(3, 1, variaveis.abaQuadroVagas.getLastRow(), 5);
+  for (let i = 1; i &lt; abaEntidadesDados.getHeight(); i++) {
+    let entidade = {
+      email: "",
+      nome: "",
+      link: "",
+      endereco: ""
+    };
+    if (abaEntidadesDados.getCell(i, 4).getValue() != "" || abaEntidadesDados.getCell(i, 5).getValue() != "") {
+      entidade.email = abaEntidadesDados.getCell(i, 1).getValue();
+      entidade.nome = abaEntidadesDados.getCell(i, 3).getValue();
+      entidade.link = abaEntidadesDados.getCell(i, 4).getValue();
+      entidade.endereco = abaEntidadesDados.getCell(i, 5).getValue();
+      entidadesDados.push(entidade);
+    }
+  }
+  return entidadesDados;
+}
+
+/**
+ * Concede permissao de editor em todas as planilhas de entidade.
+ * @param {string} email 
+ */
+function darPermissao(email) {
+  for (let entidade of entidades) {
+    if (entidade.nome != "xPena concluída") {
+      let planilhaEntidade = SpreadsheetApp.openByUrl(entidade.link);
+      for (let aba of planilhaEntidade.getSheets()) {
+        aba.protect().addEditor(email);
+      }
+      Logger.log(`Concedido para ${email} permissão de editor na planilha ${entidade.nome}`)
+    }
+  }
+}</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

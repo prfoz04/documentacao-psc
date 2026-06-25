@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: adicionarPeloSite.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: adicionarPeloSite.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** 
+ * @file adicionar_pelo_site.gs
+ * @description Contem as funcoes responsaveis por adicionar um prestador registrado na coluna lotacao.
+ */
+
+/**
+ * atualização de entidade pelo site, é um acionador que procura algo preenchido na coluna temporario e 
+ * ao encontrar realiza a função de alterar entidade  ou remover psc
+ */
+function alterarEntidadeSite() {
+  
+  let colunaTemporario = variaveis.abaLotacao.getRange("U:U").getValues();
+  colunaTemporario = colunaTemporario.map(value => value[0]);
+
+  for (let i = 1; i &lt; colunaTemporario.length; i++) {
+
+    if (colunaTemporario[i] != '') {
+      let prestador = variaveis.abaLotacao.getRange(i + 1, variaveis.COLUNA_PRESTADORES).getValue();
+      let celula = variaveis.abaLotacao.getRange(i + 1, variaveis.COLUNA_ENTIDADES_LOTACAO);
+
+      if (colunaTemporario[i] == 'encerrado') {
+        enviaEmails();
+        console.log(`Encerrando PSC para o prestador ${prestador}`);
+        tratarPenaConcluida(celula, celula.getValue());
+      }
+
+      else {
+        let novaEntidade = celula.getValue();
+        let entidadeAnterior = colunaTemporario[i];
+        console.log(`Alterando entidade para o prestador ${prestador}, de '${entidadeAnterior}' para '${novaEntidade}'`);
+        editarEntidadePrestador(celula, entidadeAnterior);
+      }
+      variaveis.abaLotacao.getRange(i + 1, 21).setValue('');
+    }
+  } 
+}
+
+/**
+ * Verifica se existe uma nova linha na coluna loacao, caso exista, cria o registro do prestador na entidade 
+ * e envia um email automatico de aviso a entidade.
+ * Possui um acionador de tempo.
+ */
+function verificarNovosPrestadores() { 
+
+  let linha = variaveis.abaLotacao.getLastRow();
+  let linhasProcessadas = 0;
+
+  while (linha > 0) {    
+
+    const valores = variaveis.abaLotacao.getRange(linha, 1, 1, 11).getValues()[0]; // Colunas A até H
+    const [colA, colB, colC, colD, colE, , , colH, , , colK] = valores;
+    const valorK = colK?.toString().trim();
+    const isKvaziaOuErro = !valorK || valorK.startsWith("#");
+
+    // Se todos os campos A–E e H estiverem preenchidos E K estiver válido → já foi processado → parar o loop
+    if (colA &amp;&amp; colB &amp;&amp; colC &amp;&amp; colD &amp;&amp; colE &amp;&amp; colH &amp;&amp; !isKvaziaOuErro) {
+      Logger.log(`Parando na linha ${linha}, dados já processados.`);
+      break;
+    }
+    // Se os campos A–E e H estiverem preenchidos e k vazio/erro, então processa
+    if (colA &amp;&amp; colB &amp;&amp; colC &amp;&amp; colD &amp;&amp; colE &amp;&amp; colH &amp;&amp; isKvaziaOuErro) {
+      try {        
+        const celulaEntidade = variaveis.abaLotacao.getRange(linha, 8); // Coluna H        
+        adicionarNovoPrestador(celulaEntidade);
+        const nomePrestador = colB;                      // Nome do prestador (coluna B)
+        const entidadeNome = colH;                       // Nome da entidade (coluna H)        
+        const max_horas = variaveis.abaLotacao.getRange(linha, 5).getDisplayValue(); // Coluna E
+        const classe = variaveis.abaLotacao.getRange(linha, 15).getValue();          // Coluna O (15)
+        enviaEmailEntidade(nomePrestador, entidadeNome, max_horas, classe);
+        Logger.log(`Prestador adicionado da linha ${linha}`);
+        Utilities.sleep(2000); // pausa de 2 segundos
+        linhasProcessadas++;
+
+      } catch (e) {
+        Logger.log(`Erro na linha ${linha}: ${e}`);
+      }
+    } else {
+      Logger.log(`Linha ${linha} ignorada: dados incompletos (A-E e H devem estar preenchidos)`);
+    }
+
+    linha--; // Sobe uma linha
+  }
+
+  Logger.log(`Total de linhas processadas: ${linhasProcessadas}`);
+}
+
+/**
+ * Busca o email da entidade na aba 'Quadro Vagas' e envia um email avisando a entidade sobre o novo prestador. 
+ * @param {string} nomePrestador 
+ * @param {string} entidadeNome 
+ * @param {string} max_horas 
+ * @param {string} classe 
+ */
+function enviaEmailEntidade(nomePrestador, entidadeNome, max_horas, classe) {
+
+  var quadroVagasData = variaveis.abaQuadroVagas.getDataRange().getValues();
+  var mensagemStatus = '';      
+  var emailDestino = null;
+     
+    
+      Logger.log("Tipo de max_horas: " + typeof max_horas);
+      Logger.log("Valor de max_horas: " + max_horas);
+
+      // Buscar o e-mail correspondente à entidade 
+      for (let entidade of entidades) {
+        if (entidade.nome == entidadeNome) {
+          emailDestino = entidade.email;
+        }
+      } 
+      Logger.log(`Email encontrado da entidade encontrado: ${emailDestino}`)
+
+      if (emailDestino) {
+        var assunto = '';
+        var corpoEmail = '';
+        var corpoHTML = '';
+
+        
+        assunto = `PSC. Encaminhamento: ${nomePrestador}`;
+          
+        if (classe === 'CP' || classe === "CP - EANPP") {
+          corpoEmail = `Boa tarde,\n\nPor ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários ${nomePrestador}. Observar o limite máximo de ${max_horas} horas por mês.\n\n`;
+          corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Por ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários &lt;b>${nomePrestador}&lt;/b>. Observar o limite máximo de &lt;b>${max_horas}&lt;/b> horas por mês.&lt;/p>`;
+        } else {
+          corpoEmail = `Boa tarde,\n\nPor ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários ${nomePrestador}.\n\n`;
+          corpoHTML = `&lt;p>Boa tarde,&lt;/p>&lt;p>Por ordem do MM. Juiz, encaminho o(a) prestador(a) de serviços comunitários &lt;b>${nomePrestador}&lt;/b>.&lt;/p>`;
+        }
+          
+        corpoEmail += `Caso a pessoa encaminhada não seja útil ou não se enquadre no perfil da entidade, por favor nos comunique o quanto antes, preferencialmente pelo e-mail prfoz04exec@jfpr.jus.br.\n\nCordialmente,\n4ª Vara Federal de Foz do Iguaçu/PR\n45-3521-3638`;
+        corpoHTML += `&lt;p>Caso a pessoa encaminhada não seja útil ou não se enquadre no perfil da entidade, por favor nos comunique o quanto antes pelo e-mail: &lt;a href="mailto:prfoz04exec@jfpr.jus.br">prfoz04exec@jfpr.jus.br&lt;/a>.&lt;/p>&lt;p>Cordialmente,&lt;/p>&lt;p>&lt;b>4ª Vara Federal de Foz do Iguaçu/PR&lt;/b>&lt;br>45-3521-3638&lt;/p>`;
+      
+        
+
+        if (assunto &amp;&amp; corpoEmail) {
+          GmailApp.sendEmail(emailDestino, assunto, corpoEmail, { htmlBody: corpoHTML });
+          mensagemStatus += `E-mail do prestador ${nomePrestador} enviado com sucesso.\n`;
+
+        }
+      } else {
+        mensagemStatus += `E-mail não enviado para o prestador ${nomePrestador}: entidade não encontrada.\n`;
+      }
+    
+  
+
+  Logger.log(mensagemStatus || 'Nenhum e-mail foi enviado.');
+}</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

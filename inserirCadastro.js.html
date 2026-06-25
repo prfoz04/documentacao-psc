@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: inserirCadastro.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: inserirCadastro.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** 
+ * @file inserir_cadastro.gs
+ * @description Cria a aba de cadastro na entidade.
+ */
+
+/**
+ * Cria e protege aba cadastro na planilha de entidade, aba baseada em um modelo definido.
+ * Pode ser reutilizada na lógica de inserir entidade, pois, atualmente é inútil
+ *//*
+function criarAbaParaFoz() {
+  //criacao de variaveis desnecessarias
+  let planilhaGeral = SpreadsheetApp.getActiveSpreadsheet();
+  let abaQuadroVagas = planilhaGeral.getSheetByName("Quadro de Vagas");
+  let planilhaModelo = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1Z3hIPdxPXpEFCbTk666XcpVGOgQbVWvFchGEMTP16sw/edit?gid=384511932#gid=384511932");
+  let modeloRelatorio = planilhaModelo.getSheetByName("Cadastros");
+
+  if (!abaQuadroVagas || !modeloRelatorio) {
+    Logger.log("Erro: Aba 'Quadro de Vagas' ou 'Cadastros' não encontrada.");
+    return;
+  }
+
+  let lastRow = abaQuadroVagas.getLastRow();
+  for (let i = 2; i &lt;= lastRow; i++) {
+    let local = abaQuadroVagas.getRange(i, 7).getValue();
+    if (local !== "Pato Branco") continue; 
+
+    let celulaNome = abaQuadroVagas.getRange(i, 3); 
+    let richText = celulaNome.getRichTextValue();
+    
+    // Tenta obter o link usando getLinkUrl() do RichText todo
+    let linkEntidade = richText ? richText.getLinkUrl() : null;
+    if (!linkEntidade &amp;&amp; richText) {
+      let runs = richText.getRuns();
+      if (runs &amp;&amp; runs.length > 0) {
+        linkEntidade = runs[0].getLinkUrl();
+      }
+    }
+    
+    // Obter o nome exibido
+    let nomeEntidade = richText ? richText.getText() : "";
+    
+    Logger.log(`Linha ${i}: Nome = ${nomeEntidade} | Link = ${linkEntidade}`);
+
+    if (!linkEntidade) {
+      Logger.log(`Link inválido para a entidade: ${nomeEntidade}`);
+      continue;
+    }
+    
+    try {
+      let planilhaEntidade = SpreadsheetApp.openByUrl(linkEntidade);
+      let abaCadastro = modeloRelatorio.copyTo(planilhaEntidade);
+      abaCadastro.setName("Cadastros");
+      planilhaEntidade.setActiveSheet(abaCadastro);
+      planilhaEntidade.moveActiveSheet(2);
+
+      let protecoes = modeloRelatorio.getProtections(SpreadsheetApp.ProtectionType.SHEET)[0];
+      if (protecoes) {
+        let protecaoPagina = abaCadastro.protect();
+        let celulasDesprotegidas = protecoes.getUnprotectedRanges()
+          .map(celula => abaCadastro.getRange(celula.getA1Notation()));
+        protecaoPagina.setUnprotectedRanges(celulasDesprotegidas);
+        let editoresAtuais = protecaoPagina.getEditors();
+        editoresAtuais.forEach(editor => protecaoPagina.removeEditor(editor)); // Remove todos os editores
+        
+        protecaoPagina.addEditor(Session.getEffectiveUser()); 
+      }
+      
+      Logger.log(`Aba 'Cadastros' criada para a entidade: ${nomeEntidade}`);
+    } catch (e) {
+      Logger.log(`Erro ao acessar a planilha da entidade: ${nomeEntidade} - ${e.message}`);
+    }
+  }
+}*/</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="CadastroEntidade.html">CadastroEntidade</a></li></ul><h3>Global</h3><ul><li><a href="global.html#acionadorEdicao">acionadorEdicao</a></li><li><a href="global.html#adicionarNovoPrestador">adicionarNovoPrestador</a></li><li><a href="global.html#adicionarPrestadorSePossivel">adicionarPrestadorSePossivel</a></li><li><a href="global.html#ajustarColunaSomatoria">ajustarColunaSomatoria</a></li><li><a href="global.html#alterarEntidadeSite">alterarEntidadeSite</a></li><li><a href="global.html#aplicarFormulas">aplicarFormulas</a></li><li><a href="global.html#atualizarLinkDoPrestador">atualizarLinkDoPrestador</a></li><li><a href="global.html#cadastroEntidade">cadastroEntidade</a></li><li><a href="global.html#confirmarExclusao">confirmarExclusao</a></li><li><a href="global.html#copiarDadosPrestador">copiarDadosPrestador</a></li><li><a href="global.html#copiarformulas">copiarformulas</a></li><li><a href="global.html#criarNovaAba">criarNovaAba</a></li><li><a href="global.html#criarTextoComLink">criarTextoComLink</a></li><li><a href="global.html#darPermissao">darPermissao</a></li><li><a href="global.html#editarEntidadePrestador">editarEntidadePrestador</a></li><li><a href="global.html#enviaEmailEntidade">enviaEmailEntidade</a></li><li><a href="global.html#enviaEmails">enviaEmails</a></li><li><a href="global.html#estilizarColunaTotal">estilizarColunaTotal</a></li><li><a href="global.html#formatarAba">formatarAba</a></li><li><a href="global.html#formatarAbaCadastro">formatarAbaCadastro</a></li><li><a href="global.html#inserirProtecoes">inserirProtecoes</a></li><li><a href="global.html#normaliza">normaliza</a></li><li><a href="global.html#pegarEntidades">pegarEntidades</a></li><li><a href="global.html#preencheColuna">preencheColuna</a></li><li><a href="global.html#procurarLinkEntidade">procurarLinkEntidade</a></li><li><a href="global.html#relatorioVazio">relatorioVazio</a></li><li><a href="global.html#removerLinkDoPrestador">removerLinkDoPrestador</a></li><li><a href="global.html#temEproc">temEproc</a></li><li><a href="global.html#transferirDadosCadastro">transferirDadosCadastro</a></li><li><a href="global.html#tratarPenaConcluida">tratarPenaConcluida</a></li><li><a href="global.html#variaveis">variaveis</a></li><li><a href="global.html#verificarNovosPrestadores">verificarNovosPrestadores</a></li><li><a href="global.html#verificarReferenciaDosPrestadores">verificarReferenciaDosPrestadores</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Tue Jun 23 2026 17:07:13 GMT-0300 (Horário Padrão de Brasília)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
